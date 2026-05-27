@@ -18,12 +18,10 @@ function App() {
 
   return (
     <Layout>
-      <div className="flex flex-col h-full">
-        <TabBar />
-        <RequestInput />
-        <div className="flex-1 overflow-hidden">
-          <ResponseDisplay />
-        </div>
+      <TabBar />
+      <RequestInput />
+      <div className="flex-1 overflow-hidden">
+        <ResponseDisplay />
       </div>
     </Layout>
   );

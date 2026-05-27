@@ -19,7 +19,7 @@ export const useUIStore = create<UIState>((set) => ({
   theme: 'dark',
   sidebarOpen: true,
   activeTab: 'history',
-  inputMode: 'form',
+  inputMode: 'curl',
 
   setTheme: (theme) => set({ theme }),
   toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),

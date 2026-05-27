@@ -12,20 +12,21 @@ export const Input: React.FC<InputProps> = ({
   ...props
 }) => {
   return (
-    <div className="flex flex-col gap-1">
+    <div className={`flex flex-col gap-1 ${className}`}>
       {label && (
-        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+        <label className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
           {label}
         </label>
       )}
       <input
-        className={`px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-          error ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
-        } ${className}`}
+        className="input-field"
+        style={{
+          borderColor: error ? 'var(--danger-fg)' : undefined,
+        }}
         {...props}
       />
       {error && (
-        <span className="text-sm text-red-500">{error}</span>
+        <span className="text-xs" style={{ color: 'var(--danger-fg)' }}>{error}</span>
       )}
     </div>
   );

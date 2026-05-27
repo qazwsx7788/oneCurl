@@ -1,7 +1,7 @@
 import React from 'react';
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary' | 'danger';
+  variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
   size?: 'sm' | 'md' | 'lg';
   loading?: boolean;
 }
@@ -15,29 +15,60 @@ export const Button: React.FC<ButtonProps> = ({
   disabled,
   ...props
 }) => {
-  const baseClasses = 'font-medium rounded-lg transition-colors focus:outline-none focus:ring-2';
-
-  const variantClasses = {
-    primary: 'bg-blue-600 hover:bg-blue-700 text-white focus:ring-blue-500',
-    secondary: 'bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-white focus:ring-gray-500',
-    danger: 'bg-red-600 hover:bg-red-700 text-white focus:ring-red-500',
+  const base: React.CSSProperties = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '4px',
+    fontWeight: 500,
+    borderRadius: 'var(--radius)',
+    border: 'none',
+    cursor: disabled || loading ? 'not-allowed' : 'pointer',
+    opacity: disabled || loading ? 0.5 : 1,
+    transition: 'all 0.15s',
+    fontFamily: 'inherit',
+    whiteSpace: 'nowrap' as const,
   };
 
-  const sizeClasses = {
-    sm: 'px-3 py-1.5 text-sm',
-    md: 'px-4 py-2 text-base',
-    lg: 'px-6 py-3 text-lg',
+  const variants: Record<string, React.CSSProperties> = {
+    primary: {
+      background: 'var(--accent-emphasis)',
+      color: '#fff',
+    },
+    secondary: {
+      background: 'var(--bg-overlay)',
+      color: 'var(--text-primary)',
+      border: '1px solid var(--border-default)',
+    },
+    danger: {
+      background: 'var(--danger-emphasis)',
+      color: '#fff',
+    },
+    ghost: {
+      background: 'transparent',
+      color: 'var(--text-secondary)',
+    },
+  };
+
+  const sizes: Record<string, React.CSSProperties> = {
+    sm: { padding: '4px 10px', fontSize: '13px' },
+    md: { padding: '6px 14px', fontSize: '15px' },
+    lg: { padding: '8px 16px', fontSize: '16px' },
   };
 
   return (
     <button
-      className={`${baseClasses} ${variantClasses[variant]} ${sizeClasses[size]} ${className} ${
-        disabled || loading ? 'opacity-50 cursor-not-allowed' : ''
-      }`}
+      className={className}
+      style={{ ...base, ...variants[variant], ...sizes[size] }}
       disabled={disabled || loading}
       {...props}
     >
-      {loading ? '加载中...' : children}
+      {loading ? (
+        <>
+          <span className="inline-block animate-spin" style={{ width: 12, height: 12, border: '2px solid currentColor', borderTopColor: 'transparent', borderRadius: '50%' }} />
+          处理中...
+        </>
+      ) : children}
     </button>
   );
 };

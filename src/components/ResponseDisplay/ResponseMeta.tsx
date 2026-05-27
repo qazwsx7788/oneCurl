@@ -6,11 +6,11 @@ interface ResponseMetaProps {
 }
 
 export const ResponseMeta: React.FC<ResponseMetaProps> = ({ response }) => {
-  const getStatusColor = (statusCode: number) => {
-    if (statusCode >= 200 && statusCode < 300) return 'text-green-600 dark:text-green-400';
-    if (statusCode >= 300 && statusCode < 400) return 'text-yellow-600 dark:text-yellow-400';
-    if (statusCode >= 400) return 'text-red-600 dark:text-red-400';
-    return 'text-gray-600 dark:text-gray-400';
+  const getStatusClass = (code: number) => {
+    if (code >= 200 && code < 300) return 'status-success';
+    if (code >= 300 && code < 400) return 'status-warning';
+    if (code >= 400) return 'status-error';
+    return '';
   };
 
   const formatSize = (bytes?: number) => {
@@ -33,28 +33,30 @@ export const ResponseMeta: React.FC<ResponseMetaProps> = ({ response }) => {
   };
 
   return (
-    <div className="flex flex-col gap-1 text-sm">
-      <div className="flex items-center gap-4">
-        <span className="text-gray-500 dark:text-gray-400">状态码:</span>
-        <span className={`font-medium ${getStatusColor(response.statusCode)}`}>{response.statusCode}</span>
-
-        <span className="text-gray-500 dark:text-gray-400">耗时:</span>
-        <span className="text-gray-700 dark:text-gray-300">{formatTime(response.responseTime)}</span>
-
-        <span className="text-gray-500 dark:text-gray-400">大小:</span>
-        <span className="text-gray-700 dark:text-gray-300">{formatSize(response.responseSize)}</span>
-
-        {response.contentType && (
-          <>
-            <span className="text-gray-500 dark:text-gray-400">类型:</span>
-            <span className="text-gray-700 dark:text-gray-300">{response.contentType}</span>
-          </>
-        )}
+    <div className="flex items-center gap-3 flex-wrap">
+      <span className={`status-badge ${getStatusClass(response.statusCode)}`}>
+        {response.statusCode}
+      </span>
+      <div className="flex items-center gap-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+        </svg>
+        {formatTime(response.responseTime)}
       </div>
-      <div className="flex items-center gap-4">
-        <span className="text-gray-500 dark:text-gray-400">时间:</span>
-        <span className="text-gray-700 dark:text-gray-300">{formatDateTime(response.createdAt)}</span>
+      <div className="flex items-center gap-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" />
+        </svg>
+        {formatSize(response.responseSize)}
       </div>
+      {response.contentType && (
+        <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
+          {response.contentType.split(';')[0]}
+        </span>
+      )}
+      <span className="text-xs ml-auto" style={{ color: 'var(--text-muted)' }}>
+        {formatDateTime(response.createdAt)}
+      </span>
     </div>
   );
 };

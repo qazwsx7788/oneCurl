@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { HttpRequest, KeyValuePair, RequestBody, AuthConfig, ProxyConfig } from '../types/request';
+import { HttpRequest, KeyValuePair, RequestBody, AuthConfig } from '../types/request';
 import { HttpResponse } from '../types/response';
 
 interface RequestState {
@@ -13,7 +13,7 @@ interface RequestState {
   setHeaders: (headers: KeyValuePair[]) => void;
   setBody: (body: RequestBody | undefined) => void;
   setAuth: (auth: AuthConfig | undefined) => void;
-  setProxy: (proxy: ProxyConfig | undefined) => void;
+  setProxy: (proxy: { proxy_type: string; host: string; port: number } | undefined) => void;
   setSslVerify: (verify: boolean) => void;
   setTimeout: (timeout: number | undefined) => void;
   setResponse: (response: HttpResponse | null) => void;
@@ -26,7 +26,7 @@ const defaultRequest: HttpRequest = {
   method: 'GET',
   url: '',
   headers: [],
-  sslVerify: false,
+  ssl_verify: false,
 };
 
 export const useRequestStore = create<RequestState>((set) => ({
@@ -53,8 +53,8 @@ export const useRequestStore = create<RequestState>((set) => ({
   setProxy: (proxy) => set((state) => ({
     currentRequest: { ...state.currentRequest, proxy }
   })),
-  setSslVerify: (sslVerify) => set((state) => ({
-    currentRequest: { ...state.currentRequest, sslVerify }
+  setSslVerify: (ssl_verify) => set((state) => ({
+    currentRequest: { ...state.currentRequest, ssl_verify }
   })),
   setTimeout: (timeout) => set((state) => ({
     currentRequest: { ...state.currentRequest, timeout }

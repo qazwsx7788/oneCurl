@@ -5,16 +5,14 @@ import { useHistoryStore } from '../../stores/historyStore';
 import { parseCurlCommand, executeRequest } from '../../services/tauri';
 
 export const CurlInput: React.FC = () => {
-  const { getActiveTab, setCurlCommand, setMethod, setUrl, setHeaders, setBody, setAuth, setProxy,
+  const { getActiveTab, setCurlCommand, resetRequest, setMethod, setUrl, setHeaders, setBody, setAuth, setProxy,
     setSslVerify, setTimeout: setRequestTimeout, setLoading, setError, setResponse } = useTabStore();
   const { refreshHistory } = useHistoryStore();
   const curlCommand = getActiveTab()?.curlCommand || '';
+  const loading = getActiveTab()?.loading || false;
 
   const handleParse = async () => {
-    if (!curlCommand.trim()) {
-      alert('请输入 curl 命令');
-      return;
-    }
+    if (!curlCommand.trim()) return;
     try {
       const request = await parseCurlCommand(curlCommand);
       setMethod(request.method);
@@ -32,10 +30,7 @@ export const CurlInput: React.FC = () => {
   };
 
   const handleExecute = async () => {
-    if (!curlCommand.trim()) {
-      alert('请输入 curl 命令');
-      return;
-    }
+    if (!curlCommand.trim()) return;
     try {
       const request = await parseCurlCommand(curlCommand);
       setMethod(request.method);
@@ -49,10 +44,7 @@ export const CurlInput: React.FC = () => {
       setLoading(true);
       setError(null);
       const response = await executeRequest(request, curlCommand);
-      setResponse({
-        ...response,
-        createdAt: new Date().toISOString(),
-      });
+      setResponse({ ...response, createdAt: new Date().toISOString() });
       await refreshHistory();
     } catch (error) {
       console.error('执行 curl 命令失败:', error);
@@ -64,19 +56,53 @@ export const CurlInput: React.FC = () => {
 
   return (
     <div className="flex flex-col gap-2">
-      <textarea
-        value={curlCommand}
-        onChange={(e) => setCurlCommand(e.target.value)}
-        placeholder="粘贴 curl 命令..."
-        className="w-full h-32 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white font-mono text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
-      />
-      <div className="flex justify-end gap-2">
-        <Button onClick={handleParse} size="sm" variant="secondary">
-          解析命令
+      <div
+        className="relative"
+        style={{ borderRadius: 'var(--radius)', overflow: 'hidden' }}
+      >
+        <div
+          className="absolute top-2 left-3 text-xs font-mono"
+          style={{ color: 'var(--text-muted)', pointerEvents: 'none', userSelect: 'none' }}
+        >
+          $
+        </div>
+        <textarea
+          value={curlCommand}
+          onChange={(e) => setCurlCommand(e.target.value)}
+          placeholder="粘贴 curl 命令..."
+          className="w-full font-mono text-sm resize-none outline-none"
+          style={{
+            height: '140px',
+            padding: '8px 12px 8px 24px',
+            background: 'var(--bg-base)',
+            border: '1px solid var(--border-default)',
+            borderRadius: 'var(--radius)',
+            color: 'var(--text-primary)',
+            lineHeight: '1.6',
+          }}
+          onKeyDown={(e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+              e.preventDefault();
+              handleExecute();
+            }
+          }}
+        />
+      </div>
+      <div className="flex items-center justify-between">
+        <Button onClick={resetRequest} size="sm" variant="ghost">
+          清空
         </Button>
-        <Button onClick={handleExecute} size="sm">
-          直接执行
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={handleParse} size="sm" variant="secondary">
+            解析
+          </Button>
+          <Button onClick={handleExecute} size="sm" loading={loading}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M8 5v14l11-7z" />
+            </svg>
+            执行
+          </Button>
+        </div>
       </div>
     </div>
   );

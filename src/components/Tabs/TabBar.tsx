@@ -4,38 +4,79 @@ import { useTabStore } from '../../stores/tabStore';
 export const TabBar: React.FC = () => {
   const { tabs, activeTabId, addTab, closeTab, setActiveTab } = useTabStore();
 
+  const getMethodClass = (method: string) => {
+    const m = method?.toUpperCase() || 'GET';
+    return `method-${m.toLowerCase()}`;
+  };
+
   return (
-    <div className="flex items-center bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-      <div className="flex overflow-x-auto">
-        {tabs.map((tab) => (
-          <div
-            key={tab.id}
-            className={`flex items-center gap-2 px-4 py-2 cursor-pointer border-r border-gray-200 dark:border-gray-700 min-w-[120px] ${
-              activeTabId === tab.id
-                ? 'bg-white dark:bg-gray-900 text-blue-600'
-                : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
-            }`}
-            onClick={() => setActiveTab(tab.id)}
-          >
-            <span className="text-sm font-medium truncate">{tab.name}</span>
-            <button
-              onClick={(e) => { e.stopPropagation(); closeTab(tab.id); }}
-              className="ml-auto text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+    <div
+      className="flex items-center shrink-0 overflow-x-auto"
+      style={{
+        height: 'var(--tab-height)',
+        background: 'var(--bg-surface)',
+        borderBottom: '1px solid var(--border-default)',
+      }}
+    >
+      <div className="flex overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+        {tabs.map((tab) => {
+          const isActive = activeTabId === tab.id;
+          const method = tab.request?.method || 'GET';
+          return (
+            <div
+              key={tab.id}
+              className="flex items-center gap-1.5 px-3 cursor-pointer group shrink-0 transition-colors"
+              style={{
+                height: 'var(--tab-height)',
+                borderRight: '1px solid var(--border-muted)',
+                background: isActive ? 'var(--bg-base)' : 'transparent',
+                borderBottom: isActive ? '2px solid var(--accent-fg)' : '2px solid transparent',
+              }}
+              onClick={() => setActiveTab(tab.id)}
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-        ))}
+              {method !== 'GET' && (
+                <span className={`method-badge ${getMethodClass(method)}`} style={{ fontSize: '9px', padding: '1px 4px' }}>
+                  {method}
+                </span>
+              )}
+              <span
+                className="text-xs truncate max-w-[100px]"
+                style={{ color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)' }}
+              >
+                {tab.name}
+              </span>
+              {tabs.length > 1 && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); closeTab(tab.id); }}
+                  className="opacity-0 group-hover:opacity-100 transition-opacity rounded-sm"
+                  style={{
+                    width: '16px',
+                    height: '16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'var(--text-muted)',
+                    fontSize: '10px',
+                    border: 'none',
+                    background: 'transparent',
+                    cursor: 'pointer',
+                  }}
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          );
+        })}
       </div>
       <button
         onClick={addTab}
-        className="px-3 py-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-        title="新建标签页"
+        className="icon-btn shrink-0"
+        title="新建标签页 (Ctrl+N)"
+        style={{ marginLeft: '2px' }}
       >
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 5v14M5 12h14" />
         </svg>
       </button>
     </div>
