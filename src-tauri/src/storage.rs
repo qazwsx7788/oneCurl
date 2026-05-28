@@ -131,6 +131,11 @@ impl Storage {
                 request_id INTEGER NOT NULL,
                 name TEXT NOT NULL,
                 description TEXT,
+                status_code INTEGER,
+                response_headers TEXT,
+                response_body TEXT,
+                response_time INTEGER,
+                response_size INTEGER,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (request_id) REFERENCES requests(id)
             );
@@ -165,6 +170,28 @@ impl Storage {
         // 检查并添加 curl_command 列到 history 表
         let _ = conn.execute(
             "ALTER TABLE history ADD COLUMN curl_command TEXT",
+            [],
+        );
+
+        // 给 favorites 表添加响应相关列
+        let _ = conn.execute(
+            "ALTER TABLE favorites ADD COLUMN status_code INTEGER",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE favorites ADD COLUMN response_headers TEXT",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE favorites ADD COLUMN response_body TEXT",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE favorites ADD COLUMN response_time INTEGER",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE favorites ADD COLUMN response_size INTEGER",
             [],
         );
 
@@ -425,19 +452,27 @@ impl Storage {
         Ok(())
     }
 
-    pub fn add_favorite(&self, request_id: i64, name: &str, description: Option<&str>) -> Result<i64> {
+    pub fn add_favorite(&self, request_id: i64, name: &str, description: Option<&str>, response: Option<&HttpResponse>) -> Result<i64> {
         let conn = self.conn.lock().map_err(|e| anyhow!("获取锁失败: {}", e))?;
 
-        conn.execute(
-            "INSERT INTO favorites (request_id, name, description) VALUES (?1, ?2, ?3)",
-            params![request_id, name, description],
-        )?;
+        if let Some(resp) = response {
+            let headers_json = serde_json::to_string(&resp.headers)?;
+            conn.execute(
+                "INSERT INTO favorites (request_id, name, description, status_code, response_headers, response_body, response_time, response_size) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![request_id, name, description, resp.status_code, headers_json, resp.body, resp.response_time, resp.response_size],
+            )?;
+        } else {
+            conn.execute(
+                "INSERT INTO favorites (request_id, name, description) VALUES (?1, ?2, ?3)",
+                params![request_id, name, description],
+            )?;
+        }
 
         Ok(conn.last_insert_rowid())
     }
 
     /// 收藏或更新：同一项目+需求下，相同 method+url 的请求只保留一个收藏
-    pub fn upsert_favorite(&self, request: &HttpRequest, name: &str, description: Option<&str>) -> Result<i64> {
+    pub fn upsert_favorite(&self, request: &HttpRequest, name: &str, description: Option<&str>, response: Option<&HttpResponse>) -> Result<i64> {
         let conn = self.conn.lock().map_err(|e| anyhow!("获取锁失败: {}", e))?;
 
         let headers_json = serde_json::to_string(&request.headers)?;
@@ -461,11 +496,19 @@ impl Storage {
                 "UPDATE requests SET headers = ?1, body = ?2, auth = ?3, proxy = ?4, ssl_verify = ?5, timeout = ?6, updated_at = CURRENT_TIMESTAMP WHERE id = ?7",
                 params![headers_json, body_json, auth_json, proxy_json, request.ssl_verify, request.timeout, req_id],
             )?;
-            // 更新收藏名称
-            conn.execute(
-                "UPDATE favorites SET name = ?1 WHERE id = ?2",
-                params![name, fav_id],
-            )?;
+            // 更新收藏名称和响应
+            if let Some(resp) = response {
+                let resp_headers_json = serde_json::to_string(&resp.headers)?;
+                conn.execute(
+                    "UPDATE favorites SET name = ?1, status_code = ?2, response_headers = ?3, response_body = ?4, response_time = ?5, response_size = ?6 WHERE id = ?7",
+                    params![name, resp.status_code, resp_headers_json, resp.body, resp.response_time, resp.response_size, fav_id],
+                )?;
+            } else {
+                conn.execute(
+                    "UPDATE favorites SET name = ?1 WHERE id = ?2",
+                    params![name, fav_id],
+                )?;
+            }
             Ok(fav_id)
         } else {
             // 新建请求
@@ -475,10 +518,18 @@ impl Storage {
             )?;
             let request_id = conn.last_insert_rowid();
             // 新建收藏
-            conn.execute(
-                "INSERT INTO favorites (request_id, name, description) VALUES (?1, ?2, ?3)",
-                params![request_id, name, description],
-            )?;
+            if let Some(resp) = response {
+                let resp_headers_json = serde_json::to_string(&resp.headers)?;
+                conn.execute(
+                    "INSERT INTO favorites (request_id, name, description, status_code, response_headers, response_body, response_time, response_size) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                    params![request_id, name, description, resp.status_code, resp_headers_json, resp.body, resp.response_time, resp.response_size],
+                )?;
+            } else {
+                conn.execute(
+                    "INSERT INTO favorites (request_id, name, description) VALUES (?1, ?2, ?3)",
+                    params![request_id, name, description],
+                )?;
+            }
             Ok(conn.last_insert_rowid())
         }
     }
@@ -500,6 +551,7 @@ impl Storage {
 
         let mut stmt = conn.prepare(
             "SELECT f.id, f.request_id, f.name, f.description, f.created_at,
+                    f.status_code, f.response_headers, f.response_body, f.response_time, f.response_size,
                     r.method, r.url, r.headers, r.body, r.auth, r.proxy, r.ssl_verify, r.timeout, r.project_id, r.requirement_id
              FROM favorites f
              JOIN requests r ON f.request_id = r.id
@@ -507,31 +559,46 @@ impl Storage {
         )?;
 
         let rows = stmt.query_map([], |row| {
-            let headers_str: Option<String> = row.get(7)?;
-            let body_str: Option<String> = row.get(8)?;
-            let auth_str: Option<String> = row.get(9)?;
-            let proxy_str: Option<String> = row.get(10)?;
+            let headers_str: Option<String> = row.get(12)?;
+            let body_str: Option<String> = row.get(13)?;
+            let auth_str: Option<String> = row.get(14)?;
+            let proxy_str: Option<String> = row.get(15)?;
+            let resp_headers_str: Option<String> = row.get(6)?;
+            let status_code: Option<i64> = row.get(5)?;
+            let resp_body: Option<String> = row.get(7)?;
+            let resp_time: Option<i64> = row.get(8)?;
+            let resp_size: Option<i64> = row.get(9)?;
 
             Ok(FavoriteRecord {
                 id: row.get(0)?,
                 request: HttpRequest {
                     id: Some(row.get(1)?),
                     name: None,
-                    method: row.get(5)?,
-                    url: row.get(6)?,
+                    method: row.get(10)?,
+                    url: row.get(11)?,
                     headers: headers_str
                         .and_then(|s| serde_json::from_str(&s).ok())
                         .unwrap_or_default(),
                     body: body_str.and_then(|s| serde_json::from_str(&s).ok()),
                     auth: auth_str.and_then(|s| serde_json::from_str(&s).ok()),
                     proxy: proxy_str.and_then(|s| serde_json::from_str(&s).ok()),
-                    ssl_verify: row.get(11)?,
-                    timeout: row.get(12)?,
-                    project_id: row.get(13)?,
-                    requirement_id: row.get(14)?,
+                    ssl_verify: row.get(16)?,
+                    timeout: row.get(17)?,
+                    project_id: row.get(18)?,
+                    requirement_id: row.get(19)?,
                 },
                 name: row.get(2)?,
                 description: row.get(3)?,
+                response: status_code.and_then(|sc| Some(HttpResponse {
+                    status_code: sc as u16,
+                    headers: resp_headers_str
+                        .and_then(|s| serde_json::from_str(&s).ok())
+                        .unwrap_or_default(),
+                    body: resp_body?,
+                    response_time: resp_time? as u64,
+                    response_size: resp_size? as usize,
+                    content_type: None,
+                })),
                 created_at: row.get(4)?,
             })
         })?;
@@ -746,6 +813,7 @@ impl Storage {
         let conn = self.conn.lock().map_err(|e| anyhow!("获取锁失败: {}", e))?;
 
         let base_sql = "SELECT f.id, f.request_id, f.name, f.description, f.created_at,
+                        f.status_code, f.response_headers, f.response_body, f.response_time, f.response_size,
                         r.method, r.url, r.headers, r.body, r.auth, r.proxy, r.ssl_verify, r.timeout, r.project_id, r.requirement_id
                  FROM favorites f JOIN requests r ON f.request_id = r.id";
 
@@ -762,29 +830,42 @@ impl Storage {
         let mut stmt = conn.prepare(&sql)?;
 
         let map_row = |row: &rusqlite::Row| -> rusqlite::Result<FavoriteRecord> {
-            let headers_str: Option<String> = row.get(7)?;
-            let body_str: Option<String> = row.get(8)?;
-            let auth_str: Option<String> = row.get(9)?;
-            let proxy_str: Option<String> = row.get(10)?;
+            let headers_str: Option<String> = row.get(12)?;
+            let body_str: Option<String> = row.get(13)?;
+            let auth_str: Option<String> = row.get(14)?;
+            let proxy_str: Option<String> = row.get(15)?;
+            let resp_headers_str: Option<String> = row.get(6)?;
+            let status_code: Option<i64> = row.get(5)?;
+            let resp_body: Option<String> = row.get(7)?;
+            let resp_time: Option<i64> = row.get(8)?;
+            let resp_size: Option<i64> = row.get(9)?;
 
             Ok(FavoriteRecord {
                 id: row.get(0)?,
                 request: HttpRequest {
                     id: Some(row.get(1)?),
                     name: None,
-                    method: row.get(5)?,
-                    url: row.get(6)?,
+                    method: row.get(10)?,
+                    url: row.get(11)?,
                     headers: headers_str.and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default(),
                     body: body_str.and_then(|s| serde_json::from_str(&s).ok()),
                     auth: auth_str.and_then(|s| serde_json::from_str(&s).ok()),
                     proxy: proxy_str.and_then(|s| serde_json::from_str(&s).ok()),
-                    ssl_verify: row.get(11)?,
-                    timeout: row.get(12)?,
-                    project_id: row.get(13)?,
-                    requirement_id: row.get(14)?,
+                    ssl_verify: row.get(16)?,
+                    timeout: row.get(17)?,
+                    project_id: row.get(18)?,
+                    requirement_id: row.get(19)?,
                 },
                 name: row.get(2)?,
                 description: row.get(3)?,
+                response: status_code.and_then(|sc| Some(HttpResponse {
+                    status_code: sc as u16,
+                    headers: resp_headers_str.and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default(),
+                    body: resp_body?,
+                    response_time: resp_time? as u64,
+                    response_size: resp_size? as usize,
+                    content_type: None,
+                })),
                 created_at: row.get(4)?,
             })
         };

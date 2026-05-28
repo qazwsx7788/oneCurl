@@ -41,9 +41,10 @@ export async function addFavorite(
 export async function upsertFavorite(
   request: HttpRequest,
   name: string,
-  description?: string
+  description?: string,
+  response?: HttpResponse
 ): Promise<number> {
-  return await invoke('upsert_favorite', { request, name, description });
+  return await invoke('upsert_favorite', { request, name, description, response });
 }
 
 export async function getFavorites(): Promise<FavoriteRecord[]> {

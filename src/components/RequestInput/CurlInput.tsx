@@ -73,12 +73,17 @@ export const CurlInput: React.FC = () => {
       const defaultName = request.url || curlCommand.substring(0, 50);
       const name = window.prompt('请输入收藏名称:', defaultName);
       if (!name?.trim()) return;
+
+      // 获取当前响应
+      const currentTab = getActiveTab();
+      const response = currentTab?.response || undefined;
+
       const requestWithProject = {
         ...request,
         projectId: selectedProjectId ?? undefined,
         requirementId: selectedRequirementId ?? undefined,
       };
-      await upsertFavorite(requestWithProject, name.trim());
+      await upsertFavorite(requestWithProject, name.trim(), undefined, response);
       await fetchProjectTree();
       await fetchFavorites();
     } catch (error) {

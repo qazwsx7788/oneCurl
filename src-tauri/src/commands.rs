@@ -84,11 +84,12 @@ pub async fn add_favorite(
     request_id: i64,
     name: String,
     description: Option<String>,
+    response: Option<HttpResponse>,
     state: State<'_, Arc<AppState>>,
 ) -> Result<i64, String> {
     state
         .storage
-        .add_favorite(request_id, &name, description.as_deref())
+        .add_favorite(request_id, &name, description.as_deref(), response.as_ref())
         .map_err(|e| e.to_string())
 }
 
@@ -97,11 +98,12 @@ pub async fn upsert_favorite(
     request: HttpRequest,
     name: String,
     description: Option<String>,
+    response: Option<HttpResponse>,
     state: State<'_, Arc<AppState>>,
 ) -> Result<i64, String> {
     state
         .storage
-        .upsert_favorite(&request, &name, description.as_deref())
+        .upsert_favorite(&request, &name, description.as_deref(), response.as_ref())
         .map_err(|e| e.to_string())
 }
 

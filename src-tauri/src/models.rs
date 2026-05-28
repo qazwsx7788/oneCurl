@@ -90,6 +90,7 @@ pub struct FavoriteRecord {
     pub request: HttpRequest,
     pub name: String,
     pub description: Option<String>,
+    pub response: Option<HttpResponse>,
     pub created_at: String,
 }
 
