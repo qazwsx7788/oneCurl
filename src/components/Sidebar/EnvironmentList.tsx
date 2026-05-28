@@ -6,7 +6,7 @@ import { EnvironmentEditor } from '../Environment/EnvironmentEditor';
 import { Environment } from '../../types/environment';
 
 export const EnvironmentList: React.FC = () => {
-  const { environments, activeEnvironment, loading, fetchEnvironments, setActiveEnvironment } = useEnvironmentStore();
+  const { environments, activeEnvironment, loading, fetchEnvironments, setActiveEnvironment, deleteEnvironment } = useEnvironmentStore();
   const [showEditor, setShowEditor] = useState(false);
   const [editingEnv, setEditingEnv] = useState<Environment | undefined>(undefined);
 
@@ -15,6 +15,12 @@ export const EnvironmentList: React.FC = () => {
   const handleEdit = (env: Environment) => {
     setEditingEnv(env);
     setShowEditor(true);
+  };
+
+  const handleDelete = async (env: Environment) => {
+    if (window.confirm(`确定删除环境 "${env.name}" 吗？`)) {
+      await deleteEnvironment(env.id);
+    }
   };
 
   if (loading) return <div className="text-center text-gray-500">加载中...</div>;
@@ -46,15 +52,20 @@ export const EnvironmentList: React.FC = () => {
                 <div className="font-medium text-gray-900 dark:text-white">{env.name}</div>
                 <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">{env.variables.length} 个变量</div>
               </div>
-              <Button size="sm" variant="secondary" onClick={(e) => { e.stopPropagation(); handleEdit(env); }}>
-                编辑
-              </Button>
+              <div className="flex gap-1">
+                <Button size="sm" variant="secondary" onClick={(e) => { e.stopPropagation(); handleEdit(env); }}>
+                  编辑
+                </Button>
+                <Button size="sm" variant="danger" onClick={(e) => { e.stopPropagation(); handleDelete(env); }}>
+                  删除
+                </Button>
+              </div>
             </div>
           </div>
         ))
       )}
 
-      <Modal isOpen={showEditor} onClose={() => setShowEditor(false)} title={editingEnv ? '编辑环境' : '新建环境'}>
+      <Modal isOpen={showEditor} onClose={() => setShowEditor(false)} title={editingEnv ? '编辑环境' : '新建环境'} size="lg">
         <EnvironmentEditor environment={editingEnv} onClose={() => setShowEditor(false)} />
       </Modal>
     </div>

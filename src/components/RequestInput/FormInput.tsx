@@ -6,6 +6,8 @@ import { useProjectStore } from '../../stores/projectStore';
 import { executeRequest } from '../../services/tauri';
 import { RequestBody } from '../../types/request';
 import { generateCurlCommand } from '../../utils/curl';
+import { useEnvironmentStore } from '../../stores/environmentStore';
+import { mergeEnvironmentHeaders } from '../../utils/environment';
 
 const HTTP_METHODS = [
   { value: 'GET', label: 'GET' },
@@ -58,6 +60,7 @@ export const FormInput: React.FC = () => {
   const { getActiveTab, setMethod, setUrl, setHeaders, setBody, setSslVerify, setTimeout: setRequestTimeout, setResponse, setLoading, setError } = useTabStore();
   const { refreshHistory } = useHistoryStore();
   const { selectedProjectId, selectedRequirementId } = useProjectStore();
+  const { activeEnvironment } = useEnvironmentStore();
   const currentRequest = getActiveTab()?.request || { method: 'GET', url: '', headers: [], ssl_verify: false };
   const loading = getActiveTab()?.loading || false;
   const [showHeaders, setShowHeaders] = useState(currentRequest.headers.length > 0);
@@ -80,6 +83,7 @@ export const FormInput: React.FC = () => {
       // 关联当前选中的项目和需求
       const requestWithProject = {
         ...currentRequest,
+        headers: mergeEnvironmentHeaders(currentRequest.headers, activeEnvironment),
         projectId: selectedProjectId ?? undefined,
         requirementId: selectedRequirementId ?? undefined,
       };

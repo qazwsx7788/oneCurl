@@ -47,6 +47,7 @@ pub fn run() {
             commands::update_favorite_name,
             commands::save_environment,
             commands::get_environments,
+            commands::delete_environment,
             commands::websocket_connect,
             commands::websocket_send,
             commands::websocket_messages,

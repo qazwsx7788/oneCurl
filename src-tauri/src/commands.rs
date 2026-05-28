@@ -150,6 +150,17 @@ pub async fn get_environments(
 }
 
 #[tauri::command]
+pub async fn delete_environment(
+    id: i64,
+    state: State<'_, Arc<AppState>>,
+) -> Result<(), String> {
+    state
+        .storage
+        .delete_environment(id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn websocket_connect(
     url: String,
     headers: Vec<KeyValuePair>,

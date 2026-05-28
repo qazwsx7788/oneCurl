@@ -64,6 +64,10 @@ export async function getEnvironments(): Promise<Environment[]> {
   return await invoke('get_environments');
 }
 
+export async function deleteEnvironment(id: number): Promise<void> {
+  return await invoke('delete_environment', { id });
+}
+
 export async function websocketConnect(url: string, headers: any[]): Promise<void> {
   return await invoke('websocket_connect', { url, headers });
 }

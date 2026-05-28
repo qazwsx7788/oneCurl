@@ -659,6 +659,12 @@ impl Storage {
         Ok(environments)
     }
 
+    pub fn delete_environment(&self, id: i64) -> Result<()> {
+        let conn = self.conn.lock().map_err(|e| anyhow!("获取锁失败: {}", e))?;
+        conn.execute("DELETE FROM environments WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
     pub fn add_log(&self, request_id: Option<i64>, level: LogLevel, message: &str, details: Option<serde_json::Value>) -> Result<i64> {
         let conn = self.conn.lock().map_err(|e| anyhow!("获取锁失败: {}", e))?;
 

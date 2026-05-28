@@ -95,6 +95,7 @@ pub struct FavoriteRecord {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Environment {
     pub id: i64,
     pub name: String,
@@ -104,6 +105,7 @@ pub struct Environment {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct EnvironmentVariable {
     pub key: String,
     pub value: String,
@@ -112,6 +114,7 @@ pub struct EnvironmentVariable {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum VariableType {
     String,
     Number,

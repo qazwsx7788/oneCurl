@@ -5,6 +5,8 @@ import { useHistoryStore } from '../../stores/historyStore';
 import { useFavoritesStore } from '../../stores/favoritesStore';
 import { useProjectStore } from '../../stores/projectStore';
 import { parseCurlCommand, executeRequest, upsertFavorite } from '../../services/tauri';
+import { useEnvironmentStore } from '../../stores/environmentStore';
+import { mergeEnvironmentHeaders } from '../../utils/environment';
 
 const MIN_HEIGHT = 60;
 const MAX_HEIGHT = 500;
@@ -29,6 +31,7 @@ export const CurlInput: React.FC = () => {
   const { getActiveTab, setCurlCommand, resetRequest, setMethod, setUrl, setHeaders, setBody, setAuth, setProxy,
     setSslVerify, setTimeout: setRequestTimeout, setLoading, setError, setResponse } = useTabStore();
   const { refreshHistory } = useHistoryStore();
+  const { activeEnvironment } = useEnvironmentStore();
   const { selectedProjectId, selectedRequirementId, fetchProjectTree } = useProjectStore();
   const { fetchFavorites } = useFavoritesStore();
   const curlCommand = getActiveTab()?.curlCommand || '';
@@ -108,6 +111,7 @@ export const CurlInput: React.FC = () => {
       // 关联当前选中的项目和需求
       const requestWithProject = {
         ...request,
+        headers: mergeEnvironmentHeaders(request.headers, activeEnvironment),
         projectId: selectedProjectId ?? undefined,
         requirementId: selectedRequirementId ?? undefined,
       };
