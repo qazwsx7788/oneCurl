@@ -37,7 +37,7 @@ export const FavoritesList: React.FC = () => {
     setRequestTimeout(record.request.timeout);
     const curlCommand = generateCurlCommand(record.request);
     setCurlCommand(curlCommand);
-    setResponse(null);
+    setResponse(record.response || null);
     setError(null);
   };
 

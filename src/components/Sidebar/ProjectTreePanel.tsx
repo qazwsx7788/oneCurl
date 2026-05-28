@@ -55,6 +55,11 @@ export const ProjectTreePanel: React.FC = () => {
       ssl_verify: req.ssl_verify ?? true,
       timeout: req.timeout || undefined,
     });
+    // 恢复保存的响应数据
+    if (fav.response) {
+      const { setResponse } = useTabStore.getState();
+      setResponse(fav.response);
+    }
   };
 
   const startEdit = (type: 'project' | 'requirement', id: number, name: string) => {
