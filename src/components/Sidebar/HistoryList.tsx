@@ -3,8 +3,9 @@ import { useHistoryStore } from '../../stores/historyStore';
 import { useTabStore } from '../../stores/tabStore';
 import { useFavoritesStore } from '../../stores/favoritesStore';
 import { useUIStore } from '../../stores/uiStore';
+import { useProjectStore } from '../../stores/projectStore';
 import { HistoryRecord } from '../../types/history';
-import { deleteHistory, clearHistory } from '../../services/tauri';
+import { deleteHistory } from '../../services/tauri';
 import { generateCurlCommand } from '../../utils/curl';
 
 export const HistoryList: React.FC = () => {
@@ -12,20 +13,28 @@ export const HistoryList: React.FC = () => {
   const { setCurlCommand, setResponse } = useTabStore();
   const { addFavorite } = useFavoritesStore();
   const { setInputMode } = useUIStore();
+  const { selectedProjectId, selectedRequirementId } = useProjectStore();
   const [search, setSearch] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [selectMode, setSelectMode] = useState(false);
 
   useEffect(() => {
     fetchHistory();
   }, [fetchHistory]);
 
   const keyword = search.trim().toLowerCase();
-  const filtered = keyword
-    ? history.filter((r) => r.request.url.toLowerCase().includes(keyword))
-    : history;
+  const filtered = history.filter((r) => {
+    // 按项目/需求筛选
+    if (selectedProjectId && r.request.projectId !== selectedProjectId) return false;
+    if (selectedRequirementId && r.request.requirementId !== selectedRequirementId) return false;
+    // 按关键词筛选
+    if (keyword && !r.request.url.toLowerCase().includes(keyword)) return false;
+    return true;
+  });
 
   const formatTime = (dateString: string) => {
     if (!dateString) return '';
-    const isoString = dateString.replace(' ', 'T');
+    const isoString = dateString.replace(' ', 'T') + 'Z';
     const date = new Date(isoString);
     return isNaN(date.getTime()) ? dateString : date.toLocaleString('zh-CN');
   };
@@ -75,14 +84,43 @@ export const HistoryList: React.FC = () => {
     }
   };
 
-  const handleClearHistory = async () => {
-    if (confirm('确定要清空所有历史记录吗？此操作不可撤销。')) {
-      try {
-        await clearHistory();
-        await fetchHistory();
-      } catch (error) {
-        console.error('清空历史记录失败:', error);
+  const toggleSelectMode = () => {
+    setSelectMode(!selectMode);
+    setSelectedIds(new Set());
+  };
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
       }
+      return next;
+    });
+  };
+
+  const selectAll = () => {
+    if (selectedIds.size === filtered.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filtered.map(r => r.id)));
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`确定删除选中的 ${selectedIds.size} 条记录吗？`)) return;
+    try {
+      for (const id of selectedIds) {
+        await deleteHistory(id);
+      }
+      setSelectedIds(new Set());
+      setSelectMode(false);
+      await fetchHistory();
+    } catch (error) {
+      console.error('删除历史记录失败:', error);
     }
   };
 
@@ -109,15 +147,40 @@ export const HistoryList: React.FC = () => {
           />
         </div>
         {history.length > 0 && (
-          <button
-            onClick={handleClearHistory}
-            className="ghost-btn shrink-0"
-            style={{ color: 'var(--danger-fg)', fontSize: '12px', whiteSpace: 'nowrap' }}
-          >
-            清空所有
-          </button>
-            </svg>
-          </button>
+          selectMode ? (
+            <div className="flex gap-1 shrink-0">
+              <button
+                onClick={selectAll}
+                className="ghost-btn"
+                style={{ fontSize: '12px', whiteSpace: 'nowrap' }}
+              >
+                {selectedIds.size === filtered.length ? '取消全选' : '全选'}
+              </button>
+              <button
+                onClick={handleDeleteSelected}
+                className="ghost-btn"
+                style={{ color: 'var(--danger-fg)', fontSize: '12px', whiteSpace: 'nowrap' }}
+                disabled={selectedIds.size === 0}
+              >
+                删除 ({selectedIds.size})
+              </button>
+              <button
+                onClick={toggleSelectMode}
+                className="ghost-btn"
+                style={{ fontSize: '12px', whiteSpace: 'nowrap' }}
+              >
+                取消
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={toggleSelectMode}
+              className="ghost-btn shrink-0"
+              style={{ fontSize: '12px', whiteSpace: 'nowrap' }}
+            >
+              选择
+            </button>
+          )
         )}
       </div>
 
@@ -134,12 +197,21 @@ export const HistoryList: React.FC = () => {
           style={{
             padding: '8px 10px',
             borderRadius: 'var(--radius)',
-            border: '1px solid var(--border-muted)',
-            background: 'var(--bg-elevated)',
+            border: `1px solid ${selectedIds.has(record.id) ? 'var(--border-focus)' : 'var(--border-muted)'}`,
+            background: selectedIds.has(record.id) ? 'var(--bg-selected)' : 'var(--bg-elevated)',
           }}
-          onClick={() => handleLoadToForm(record)}
+          onClick={() => selectMode ? toggleSelect(record.id) : handleLoadToForm(record)}
         >
           <div className="flex items-center gap-1.5 mb-1">
+            {selectMode && (
+              <input
+                type="checkbox"
+                checked={selectedIds.has(record.id)}
+                onChange={() => toggleSelect(record.id)}
+                onClick={(e) => e.stopPropagation()}
+                style={{ cursor: 'pointer' }}
+              />
+            )}
             <span className={`method-badge ${getMethodClass(record.request.method)}`} style={{ fontSize: '9px', padding: '0 4px' }}>
               {record.request.method}
             </span>

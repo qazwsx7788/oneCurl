@@ -153,6 +153,8 @@ mod tests {
             proxy: None,
             ssl_verify: true,
             timeout: Some(30),
+            project_id: None,
+            requirement_id: None,
         };
 
         let result = client.execute(&request).await;
@@ -179,6 +181,8 @@ mod tests {
             proxy: None,
             ssl_verify: true,
             timeout: Some(30),
+            project_id: None,
+            requirement_id: None,
         };
 
         let result = client.execute(&request).await;

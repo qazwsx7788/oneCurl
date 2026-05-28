@@ -1,23 +1,30 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useFavoritesStore } from '../../stores/favoritesStore';
 import { useTabStore } from '../../stores/tabStore';
+import { useProjectStore } from '../../stores/projectStore';
 import { FavoriteRecord } from '../../types/favorite';
 import { generateCurlCommand } from '../../utils/curl';
 
 export const FavoritesList: React.FC = () => {
-  const { favorites, loading, fetchFavorites, removeFavorite } = useFavoritesStore();
-  const { setMethod, setUrl, setHeaders, setBody, setAuth, setProxy, setSslVerify, setTimeout: setRequestTimeout, setCurlCommand } = useTabStore();
+  const { favorites, loading, fetchFavorites, removeFavorite, updateFavoriteName } = useFavoritesStore();
+  const { setMethod, setUrl, setHeaders, setBody, setAuth, setProxy, setSslVerify, setTimeout: setRequestTimeout, setCurlCommand, setResponse, setError } = useTabStore();
+  const { selectedProjectId, selectedRequirementId } = useProjectStore();
   const [search, setSearch] = useState('');
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingName, setEditingName] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { fetchFavorites(); }, [fetchFavorites]);
 
   const keyword = search.trim().toLowerCase();
-  const filtered = keyword
-    ? favorites.filter((r) =>
-        r.name.toLowerCase().includes(keyword) ||
-        r.request.url.toLowerCase().includes(keyword)
-      )
-    : favorites;
+  const filtered = favorites.filter((r) => {
+    // 按项目/需求筛选
+    if (selectedProjectId && r.request.projectId !== selectedProjectId) return false;
+    if (selectedRequirementId && r.request.requirementId !== selectedRequirementId) return false;
+    // 按关键词筛选
+    if (keyword && !r.name.toLowerCase().includes(keyword) && !r.request.url.toLowerCase().includes(keyword)) return false;
+    return true;
+  });
 
   const loadRequest = (record: FavoriteRecord) => {
     setMethod(record.request.method);
@@ -30,6 +37,8 @@ export const FavoritesList: React.FC = () => {
     setRequestTimeout(record.request.timeout);
     const curlCommand = generateCurlCommand(record.request);
     setCurlCommand(curlCommand);
+    setResponse(null);
+    setError(null);
   };
 
   const handleRemove = async (record: FavoriteRecord) => {
@@ -41,7 +50,28 @@ export const FavoritesList: React.FC = () => {
     }
   };
 
-  const getMethodClass = (method: string) => `method-${method.toLowerCase()}`;
+  const startEditing = (record: FavoriteRecord) => {
+    setEditingId(record.id);
+    setEditingName(record.name);
+    setTimeout(() => inputRef.current?.focus(), 0);
+  };
+
+  const saveEditing = async () => {
+    if (editingId === null) return;
+    const trimmed = editingName.trim();
+    if (!trimmed) return;
+    try {
+      await updateFavoriteName(editingId, trimmed);
+    } catch (error) {
+      console.error('更新名称失败:', error);
+    }
+    setEditingId(null);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') saveEditing();
+    if (e.key === 'Escape') setEditingId(null);
+  };
 
   if (loading) return <div className="text-center py-4 text-xs" style={{ color: 'var(--text-muted)' }}>加载中...</div>;
 
@@ -84,12 +114,45 @@ export const FavoritesList: React.FC = () => {
           onClick={() => loadRequest(record)}
         >
           <div className="flex items-center gap-1.5 mb-1">
-            <span className={`method-badge ${getMethodClass(record.request.method)}`} style={{ fontSize: '9px', padding: '0 4px' }}>
+            <span
+              className="text-xs font-mono"
+              style={{
+                color: record.request.method === 'GET' ? 'var(--green-fg)' :
+                       record.request.method === 'POST' ? 'var(--blue-fg)' :
+                       record.request.method === 'PUT' ? 'var(--yellow-fg)' :
+                       record.request.method === 'DELETE' ? 'var(--red-fg)' :
+                       'var(--text-primary)',
+              }}
+            >
               {record.request.method}
             </span>
-            <span className="text-xs font-medium truncate" style={{ color: 'var(--text-primary)' }}>
-              {record.name}
-            </span>
+            {editingId === record.id ? (
+              <input
+                ref={inputRef}
+                type="text"
+                value={editingName}
+                onChange={(e) => setEditingName(e.target.value)}
+                onBlur={saveEditing}
+                onKeyDown={handleKeyDown}
+                className="text-xs font-medium flex-1 min-w-0"
+                style={{
+                  color: 'var(--text-primary)',
+                  background: 'var(--bg-input)',
+                  border: '1px solid var(--border-focus)',
+                  borderRadius: '3px',
+                  padding: '1px 4px',
+                  outline: 'none',
+                }}
+                onClick={(e) => e.stopPropagation()}
+              />
+            ) : (
+              <span
+                className="text-xs font-medium truncate"
+                style={{ color: 'var(--text-primary)' }}
+              >
+                {record.name}
+              </span>
+            )}
           </div>
           <div className="text-xs font-mono truncate" style={{ color: 'var(--text-muted)', paddingLeft: '2px' }}>
             {record.request.url}
@@ -100,19 +163,44 @@ export const FavoritesList: React.FC = () => {
                 {record.description}
               </span>
             )}
-            <button
-              onClick={(e) => { e.stopPropagation(); handleRemove(record); }}
-              className="opacity-0 group-hover:opacity-100 transition-opacity text-xs px-1.5 py-0.5"
-              style={{
-                color: 'var(--danger-fg)',
-                background: 'transparent',
-                border: 'none',
-                borderRadius: '3px',
-                cursor: 'pointer',
-              }}
-            >
-              取消
-            </button>
+            <div className="flex gap-1">
+              {editingId !== record.id && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    startEditing(record);
+                  }}
+                  className="opacity-0 group-hover:opacity-100 transition-opacity text-xs px-1.5 py-0.5"
+                  style={{
+                    color: 'var(--accent-fg)',
+                    background: 'transparent',
+                    border: 'none',
+                    borderRadius: '3px',
+                    cursor: 'pointer',
+                  }}
+                  title="编辑"
+                >
+                  编辑
+                </button>
+              )}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleRemove(record);
+                }}
+                className="opacity-0 group-hover:opacity-100 transition-opacity text-xs px-1.5 py-0.5"
+                style={{
+                  color: 'var(--danger-fg)',
+                  background: 'transparent',
+                  border: 'none',
+                  borderRadius: '3px',
+                  cursor: 'pointer',
+                }}
+                title="删除"
+              >
+                删除
+              </button>
+            </div>
           </div>
         </div>
       ))}

@@ -18,6 +18,17 @@ pub async fn parse_curl_command(input: String) -> Result<HttpRequest, String> {
 }
 
 #[tauri::command]
+pub async fn save_request(
+    request: HttpRequest,
+    state: State<'_, Arc<AppState>>,
+) -> Result<i64, String> {
+    state
+        .storage
+        .save_request(&request)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn execute_request(
     request: HttpRequest,
     curl_command: Option<String>,
@@ -82,6 +93,19 @@ pub async fn add_favorite(
 }
 
 #[tauri::command]
+pub async fn upsert_favorite(
+    request: HttpRequest,
+    name: String,
+    description: Option<String>,
+    state: State<'_, Arc<AppState>>,
+) -> Result<i64, String> {
+    state
+        .storage
+        .upsert_favorite(&request, &name, description.as_deref())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn get_favorites(
     state: State<'_, Arc<AppState>>,
 ) -> Result<Vec<FavoriteRecord>, String> {
@@ -94,6 +118,15 @@ pub async fn remove_favorite(
     state: State<'_, Arc<AppState>>,
 ) -> Result<(), String> {
     state.storage.remove_favorite(favorite_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn update_favorite_name(
+    favorite_id: i64,
+    name: String,
+    state: State<'_, Arc<AppState>>,
+) -> Result<(), String> {
+    state.storage.update_favorite_name(favorite_id, &name).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -155,4 +188,78 @@ pub async fn websocket_disconnect(
         .disconnect()
         .await
         .map_err(|e| e.to_string())
+}
+
+// ========== Project Commands ==========
+
+#[tauri::command]
+pub async fn get_projects(state: State<'_, Arc<AppState>>) -> Result<Vec<Project>, String> {
+    state.storage.get_projects().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_project_tree(state: State<'_, Arc<AppState>>) -> Result<Vec<ProjectTree>, String> {
+    state.storage.get_project_tree().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn create_project(name: String, description: Option<String>, state: State<'_, Arc<AppState>>) -> Result<i64, String> {
+    state.storage.create_project(&name, description.as_deref()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn update_project(id: i64, name: String, description: Option<String>, state: State<'_, Arc<AppState>>) -> Result<(), String> {
+    state.storage.update_project(id, &name, description.as_deref()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn delete_project(id: i64, state: State<'_, Arc<AppState>>) -> Result<(), String> {
+    state.storage.delete_project(id).map_err(|e| e.to_string())
+}
+
+// ========== Requirement Commands ==========
+
+#[tauri::command]
+pub async fn get_requirements(project_id: i64, state: State<'_, Arc<AppState>>) -> Result<Vec<Requirement>, String> {
+    state.storage.get_requirements(project_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn create_requirement(project_id: i64, name: String, description: Option<String>, state: State<'_, Arc<AppState>>) -> Result<i64, String> {
+    state.storage.create_requirement(project_id, &name, description.as_deref()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn update_requirement(id: i64, name: String, description: Option<String>, state: State<'_, Arc<AppState>>) -> Result<(), String> {
+    state.storage.update_requirement(id, &name, description.as_deref()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn delete_requirement(id: i64, state: State<'_, Arc<AppState>>) -> Result<(), String> {
+    state.storage.delete_requirement(id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn move_request_to(request_id: i64, project_id: Option<i64>, requirement_id: Option<i64>, state: State<'_, Arc<AppState>>) -> Result<(), String> {
+    state.storage.move_request(request_id, project_id, requirement_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_favorites_filtered(project_id: Option<i64>, requirement_id: Option<i64>, state: State<'_, Arc<AppState>>) -> Result<Vec<FavoriteRecord>, String> {
+    state.storage.get_favorites_filtered(project_id, requirement_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_config(key: String, state: State<'_, Arc<AppState>>) -> Result<Option<String>, String> {
+    state.storage.get_config(&key).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn set_config(key: String, value: String, state: State<'_, Arc<AppState>>) -> Result<(), String> {
+    state.storage.set_config(&key, &value).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn delete_config(key: String, state: State<'_, Arc<AppState>>) -> Result<(), String> {
+    state.storage.delete_config(&key).map_err(|e| e.to_string())
 }

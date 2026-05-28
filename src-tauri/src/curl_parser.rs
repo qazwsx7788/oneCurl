@@ -75,6 +75,8 @@ pub fn parse_curl(input: &str) -> Result<HttpRequest> {
         proxy: None,
         ssl_verify: true,
         timeout: None,
+        project_id: None,
+        requirement_id: None,
     };
 
     let mut i = 1;

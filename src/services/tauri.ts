@@ -4,9 +4,14 @@ import { HttpResponse } from '../types/response';
 import { HistoryRecord } from '../types/history';
 import { FavoriteRecord } from '../types/favorite';
 import { Environment } from '../types/environment';
+import { Project, Requirement, ProjectTree } from '../types/project';
 
 export async function parseCurlCommand(input: string): Promise<HttpRequest> {
   return await invoke('parse_curl_command', { input });
+}
+
+export async function saveRequest(request: HttpRequest): Promise<number> {
+  return await invoke('save_request', { request });
 }
 
 export async function executeRequest(request: HttpRequest, curlCommand?: string): Promise<HttpResponse> {
@@ -31,6 +36,14 @@ export async function addFavorite(
   description?: string
 ): Promise<number> {
   return await invoke('add_favorite', { requestId, name, description });
+}
+
+export async function upsertFavorite(
+  request: HttpRequest,
+  name: string,
+  description?: string
+): Promise<number> {
+  return await invoke('upsert_favorite', { request, name, description });
 }
 
 export async function getFavorites(): Promise<FavoriteRecord[]> {
@@ -63,4 +76,64 @@ export async function websocketMessages(): Promise<any[]> {
 
 export async function websocketDisconnect(): Promise<void> {
   return await invoke('websocket_disconnect');
+}
+
+// ========== Project API ==========
+
+export async function getProjects(): Promise<Project[]> {
+  return await invoke('get_projects');
+}
+
+export async function getProjectTree(): Promise<ProjectTree[]> {
+  return await invoke('get_project_tree');
+}
+
+export async function createProject(name: string, description?: string): Promise<number> {
+  return await invoke('create_project', { name, description });
+}
+
+export async function updateProject(id: number, name: string, description?: string): Promise<void> {
+  return await invoke('update_project', { id, name, description });
+}
+
+export async function deleteProject(id: number): Promise<void> {
+  return await invoke('delete_project', { id });
+}
+
+// ========== Requirement API ==========
+
+export async function getRequirements(projectId: number): Promise<Requirement[]> {
+  return await invoke('get_requirements', { projectId });
+}
+
+export async function createRequirement(projectId: number, name: string, description?: string): Promise<number> {
+  return await invoke('create_requirement', { projectId, name, description });
+}
+
+export async function updateRequirement(id: number, name: string, description?: string): Promise<void> {
+  return await invoke('update_requirement', { id, name, description });
+}
+
+export async function deleteRequirement(id: number): Promise<void> {
+  return await invoke('delete_requirement', { id });
+}
+
+export async function moveRequestTo(requestId: number, projectId?: number, requirementId?: number): Promise<void> {
+  return await invoke('move_request_to', { requestId, projectId, requirementId });
+}
+
+export async function getFavoritesFiltered(projectId?: number, requirementId?: number): Promise<FavoriteRecord[]> {
+    return await invoke('get_favorites_filtered', { projectId, requirementId });
+}
+
+export async function getConfig(key: string): Promise<string | null> {
+    return await invoke('get_config', { key });
+}
+
+export async function setConfig(key: string, value: string): Promise<void> {
+    return await invoke('set_config', { key, value });
+}
+
+export async function deleteConfig(key: string): Promise<void> {
+    return await invoke('delete_config', { key });
 }

@@ -13,6 +13,8 @@ pub struct HttpRequest {
     pub proxy: Option<ProxyConfig>,
     pub ssl_verify: bool,
     pub timeout: Option<u64>,
+    pub project_id: Option<i64>,
+    pub requirement_id: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -131,4 +133,48 @@ pub enum LogLevel {
     Minimal,
     Normal,
     Verbose,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Project {
+    pub id: i64,
+    pub name: String,
+    pub description: Option<String>,
+    pub sort_order: i32,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Requirement {
+    pub id: i64,
+    pub project_id: i64,
+    pub name: String,
+    pub description: Option<String>,
+    pub sort_order: i32,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectTree {
+    pub project: Project,
+    pub requirements: Vec<RequirementWithFavorites>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequirementWithFavorites {
+    pub requirement: Requirement,
+    pub favorites: Vec<FavoriteRecord>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Config {
+    pub key: String,
+    pub value: String,
 }

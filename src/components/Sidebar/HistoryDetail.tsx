@@ -15,8 +15,9 @@ export const HistoryDetail: React.FC<HistoryDetailProps> = ({ record }) => {
   }
 
   const formatTime = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleString('zh-CN');
+    const isoString = dateString.replace(' ', 'T') + 'Z';
+    const date = new Date(isoString);
+    return isNaN(date.getTime()) ? dateString : date.toLocaleString('zh-CN');
   };
 
   const getStatusColor = (statusCode?: number) => {

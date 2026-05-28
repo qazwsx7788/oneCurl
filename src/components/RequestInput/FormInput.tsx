@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Button } from '../Common/Button';
 import { useTabStore } from '../../stores/tabStore';
 import { useHistoryStore } from '../../stores/historyStore';
+import { useProjectStore } from '../../stores/projectStore';
 import { executeRequest } from '../../services/tauri';
 import { RequestBody } from '../../types/request';
 import { generateCurlCommand } from '../../utils/curl';
@@ -56,6 +57,7 @@ const SectionToggle: React.FC<{
 export const FormInput: React.FC = () => {
   const { getActiveTab, setMethod, setUrl, setHeaders, setBody, setSslVerify, setTimeout: setRequestTimeout, setResponse, setLoading, setError } = useTabStore();
   const { refreshHistory } = useHistoryStore();
+  const { selectedProjectId, selectedRequirementId } = useProjectStore();
   const currentRequest = getActiveTab()?.request || { method: 'GET', url: '', headers: [], ssl_verify: false };
   const loading = getActiveTab()?.loading || false;
   const [showHeaders, setShowHeaders] = useState(currentRequest.headers.length > 0);
@@ -72,8 +74,16 @@ export const FormInput: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
+      // 先清空结果区域
+      setResponse(null);
       const curlCommand = generateCurlCommand(currentRequest);
-      const response = await executeRequest(currentRequest, curlCommand);
+      // 关联当前选中的项目和需求
+      const requestWithProject = {
+        ...currentRequest,
+        projectId: selectedProjectId ?? undefined,
+        requirementId: selectedRequirementId ?? undefined,
+      };
+      const response = await executeRequest(requestWithProject, curlCommand);
       setResponse({ ...response, createdAt: new Date().toISOString() });
       await refreshHistory();
     } catch (error) {

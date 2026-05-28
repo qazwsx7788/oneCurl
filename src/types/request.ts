@@ -32,4 +32,6 @@ export interface HttpRequest {
   proxy?: { proxy_type: string; host: string; port: number };
   ssl_verify: boolean;
   timeout?: number;
+  projectId?: number;
+  requirementId?: number;
 }

@@ -9,6 +9,7 @@ interface FavoritesState {
   fetchFavorites: () => Promise<void>;
   addFavorite: (requestId: number, name: string, description?: string) => Promise<void>;
   removeFavorite: (favoriteId: number) => Promise<void>;
+  updateFavoriteName: (favoriteId: number, name: string) => Promise<void>;
 }
 
 export const useFavoritesStore = create<FavoritesState>((set) => ({
@@ -43,6 +44,16 @@ export const useFavoritesStore = create<FavoritesState>((set) => ({
       set({ favorites });
     } catch (error) {
       console.error('取消收藏失败:', error);
+    }
+  },
+
+  updateFavoriteName: async (favoriteId, name) => {
+    try {
+      await invoke('update_favorite_name', { favoriteId, name });
+      const favorites = await invoke<FavoriteRecord[]>('get_favorites');
+      set({ favorites });
+    } catch (error) {
+      console.error('更新收藏名称失败:', error);
     }
   },
 }));

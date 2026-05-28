@@ -9,15 +9,29 @@ interface SelectProps extends Omit<React.SelectHTMLAttributes<HTMLSelectElement>
   label?: string;
   options: SelectOption[];
   onChange?: (value: string) => void;
+  allowCreate?: boolean;
+  createLabel?: string;
+  onCreate?: () => void;
 }
 
 export const Select: React.FC<SelectProps> = ({
   label,
   options,
   onChange,
+  allowCreate,
+  createLabel = '+ 新增',
+  onCreate,
   className = '',
   ...props
 }) => {
+  const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    if (e.target.value === '__create__') {
+      onCreate?.();
+      return;
+    }
+    onChange?.(e.target.value);
+  };
+
   return (
     <div className={`flex flex-col gap-1 ${className}`}>
       {label && (
@@ -28,7 +42,7 @@ export const Select: React.FC<SelectProps> = ({
       <select
         className="input-field"
         style={{ cursor: 'pointer' }}
-        onChange={(e) => onChange?.(e.target.value)}
+        onChange={handleChange}
         {...props}
       >
         {options.map((option) => (
@@ -36,6 +50,9 @@ export const Select: React.FC<SelectProps> = ({
             {option.label}
           </option>
         ))}
+        {allowCreate && (
+          <option value="__create__">{createLabel}</option>
+        )}
       </select>
     </div>
   );

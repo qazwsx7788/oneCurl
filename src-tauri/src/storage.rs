@@ -152,6 +152,12 @@ impl Storage {
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (request_id) REFERENCES requests(id)
             );
+
+            CREATE TABLE IF NOT EXISTS config (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
             "
         )?;
 
@@ -161,6 +167,49 @@ impl Storage {
             "ALTER TABLE history ADD COLUMN curl_command TEXT",
             [],
         );
+
+        // 创建 projects 和 requirements 表
+        conn.execute_batch(
+            "
+            CREATE TABLE IF NOT EXISTS projects (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                description TEXT,
+                sort_order INTEGER DEFAULT 0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS requirements (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                description TEXT,
+                sort_order INTEGER DEFAULT 0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+            );
+            "
+        )?;
+
+        // 迁移：给 requests 表添加 project_id 和 requirement_id 列
+        let _ = conn.execute("ALTER TABLE requests ADD COLUMN project_id INTEGER", []);
+        let _ = conn.execute("ALTER TABLE requests ADD COLUMN requirement_id INTEGER", []);
+
+        // 插入默认项目和默认需求
+        conn.execute(
+            "INSERT OR IGNORE INTO projects (id, name, description) VALUES (1, '默认项目', '系统自动创建的默认项目')",
+            [],
+        )?;
+        conn.execute(
+            "INSERT OR IGNORE INTO requirements (id, project_id, name, description) VALUES (1, 1, '默认需求', '系统自动创建的默认需求')",
+            [],
+        )?;
+
+        // 迁移存量数据
+        conn.execute("UPDATE requests SET project_id = 1 WHERE project_id IS NULL", [])?;
+        conn.execute("UPDATE requests SET requirement_id = 1 WHERE requirement_id IS NULL", [])?;
 
         Ok(())
     }
@@ -174,7 +223,7 @@ impl Storage {
         let proxy_json = request.proxy.as_ref().map(|p| serde_json::to_string(p).unwrap_or_default());
 
         conn.execute(
-            "INSERT INTO requests (name, method, url, headers, body, auth, proxy, ssl_verify, timeout) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            "INSERT INTO requests (name, method, url, headers, body, auth, proxy, ssl_verify, timeout, project_id, requirement_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             params![
                 request.name,
                 request.method,
@@ -185,6 +234,8 @@ impl Storage {
                 proxy_json,
                 request.ssl_verify,
                 request.timeout,
+                request.project_id,
+                request.requirement_id,
             ],
         )?;
 
@@ -195,7 +246,7 @@ impl Storage {
         let conn = self.conn.lock().map_err(|e| anyhow!("获取锁失败: {}", e))?;
 
         let mut stmt = conn.prepare(
-            "SELECT id, name, method, url, headers, body, auth, proxy, ssl_verify, timeout FROM requests WHERE id = ?1"
+            "SELECT id, name, method, url, headers, body, auth, proxy, ssl_verify, timeout, project_id, requirement_id FROM requests WHERE id = ?1"
         )?;
 
         let mut rows = stmt.query_map(params![id], |row| {
@@ -217,6 +268,8 @@ impl Storage {
                 proxy: proxy_str.and_then(|s| serde_json::from_str(&s).ok()),
                 ssl_verify: row.get(8)?,
                 timeout: row.get(9)?,
+                project_id: row.get(10)?,
+                requirement_id: row.get(11)?,
             })
         })?;
 
@@ -253,7 +306,7 @@ impl Storage {
 
         let mut stmt = conn.prepare(
             "SELECT h.id, h.request_id, h.curl_command, h.status_code, h.response_headers, h.response_body, h.response_time, h.response_size, h.created_at,
-                    r.id, r.name, r.method, r.url, r.headers, r.body, r.auth, r.proxy, r.ssl_verify, r.timeout
+                    r.id, r.name, r.method, r.url, r.headers, r.body, r.auth, r.proxy, r.ssl_verify, r.timeout, r.project_id, r.requirement_id
              FROM history h
              JOIN requests r ON h.request_id = r.id
              ORDER BY h.created_at DESC
@@ -286,6 +339,8 @@ impl Storage {
                 proxy: req_proxy_str.and_then(|s| serde_json::from_str(&s).ok()),
                 ssl_verify: row.get(17)?,
                 timeout: row.get(18)?,
+                project_id: row.get(19)?,
+                requirement_id: row.get(20)?,
             };
 
             println!("🔍 [DEBUG] Reconstructed request headers count: {}", request.headers.len());
@@ -381,9 +436,62 @@ impl Storage {
         Ok(conn.last_insert_rowid())
     }
 
+    /// 收藏或更新：同一项目+需求下，相同 method+url 的请求只保留一个收藏
+    pub fn upsert_favorite(&self, request: &HttpRequest, name: &str, description: Option<&str>) -> Result<i64> {
+        let conn = self.conn.lock().map_err(|e| anyhow!("获取锁失败: {}", e))?;
+
+        let headers_json = serde_json::to_string(&request.headers)?;
+        let body_json = request.body.as_ref().map(|b| serde_json::to_string(b).unwrap_or_default());
+        let auth_json = request.auth.as_ref().map(|a| serde_json::to_string(a).unwrap_or_default());
+        let proxy_json = request.proxy.as_ref().map(|p| serde_json::to_string(p).unwrap_or_default());
+
+        // 查找同一项目+需求下相同 method+url 的已有收藏
+        let existing: Option<(i64, i64)> = conn.query_row(
+            "SELECT f.id, f.request_id FROM favorites f
+             JOIN requests r ON f.request_id = r.id
+             WHERE r.method = ?1 AND r.url = ?2 AND r.project_id = ?3 AND r.requirement_id = ?4
+             LIMIT 1",
+            params![request.method, request.url, request.project_id, request.requirement_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        ).ok();
+
+        if let Some((fav_id, req_id)) = existing {
+            // 更新已有请求
+            conn.execute(
+                "UPDATE requests SET headers = ?1, body = ?2, auth = ?3, proxy = ?4, ssl_verify = ?5, timeout = ?6, updated_at = CURRENT_TIMESTAMP WHERE id = ?7",
+                params![headers_json, body_json, auth_json, proxy_json, request.ssl_verify, request.timeout, req_id],
+            )?;
+            // 更新收藏名称
+            conn.execute(
+                "UPDATE favorites SET name = ?1 WHERE id = ?2",
+                params![name, fav_id],
+            )?;
+            Ok(fav_id)
+        } else {
+            // 新建请求
+            conn.execute(
+                "INSERT INTO requests (name, method, url, headers, body, auth, proxy, ssl_verify, timeout, project_id, requirement_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                params![request.name, request.method, request.url, headers_json, body_json, auth_json, proxy_json, request.ssl_verify, request.timeout, request.project_id, request.requirement_id],
+            )?;
+            let request_id = conn.last_insert_rowid();
+            // 新建收藏
+            conn.execute(
+                "INSERT INTO favorites (request_id, name, description) VALUES (?1, ?2, ?3)",
+                params![request_id, name, description],
+            )?;
+            Ok(conn.last_insert_rowid())
+        }
+    }
+
     pub fn remove_favorite(&self, favorite_id: i64) -> Result<()> {
         let conn = self.conn.lock().map_err(|e| anyhow!("获取锁失败: {}", e))?;
         conn.execute("DELETE FROM favorites WHERE id = ?1", params![favorite_id])?;
+        Ok(())
+    }
+
+    pub fn update_favorite_name(&self, favorite_id: i64, name: &str) -> Result<()> {
+        let conn = self.conn.lock().map_err(|e| anyhow!("获取锁失败: {}", e))?;
+        conn.execute("UPDATE favorites SET name = ?1 WHERE id = ?2", params![name, favorite_id])?;
         Ok(())
     }
 
@@ -392,7 +500,7 @@ impl Storage {
 
         let mut stmt = conn.prepare(
             "SELECT f.id, f.request_id, f.name, f.description, f.created_at,
-                    r.method, r.url, r.headers, r.body, r.auth, r.proxy, r.ssl_verify, r.timeout
+                    r.method, r.url, r.headers, r.body, r.auth, r.proxy, r.ssl_verify, r.timeout, r.project_id, r.requirement_id
              FROM favorites f
              JOIN requests r ON f.request_id = r.id
              ORDER BY f.created_at DESC"
@@ -419,6 +527,8 @@ impl Storage {
                     proxy: proxy_str.and_then(|s| serde_json::from_str(&s).ok()),
                     ssl_verify: row.get(11)?,
                     timeout: row.get(12)?,
+                    project_id: row.get(13)?,
+                    requirement_id: row.get(14)?,
                 },
                 name: row.get(2)?,
                 description: row.get(3)?,
@@ -500,6 +610,237 @@ impl Storage {
 
         Ok(conn.last_insert_rowid())
     }
+
+    // ========== Project CRUD ==========
+
+    pub fn get_projects(&self) -> Result<Vec<Project>> {
+        let conn = self.conn.lock().map_err(|e| anyhow!("获取锁失败: {}", e))?;
+        let mut stmt = conn.prepare(
+            "SELECT id, name, description, sort_order, created_at, updated_at FROM projects ORDER BY sort_order, id"
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(Project {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                description: row.get(2)?,
+                sort_order: row.get(3)?,
+                created_at: row.get(4)?,
+                updated_at: row.get(5)?,
+            })
+        })?;
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(row?);
+        }
+        Ok(result)
+    }
+
+    pub fn create_project(&self, name: &str, description: Option<&str>) -> Result<i64> {
+        let conn = self.conn.lock().map_err(|e| anyhow!("获取锁失败: {}", e))?;
+        conn.execute(
+            "INSERT INTO projects (name, description) VALUES (?1, ?2)",
+            params![name, description],
+        )?;
+        Ok(conn.last_insert_rowid())
+    }
+
+    pub fn update_project(&self, id: i64, name: &str, description: Option<&str>) -> Result<()> {
+        let conn = self.conn.lock().map_err(|e| anyhow!("获取锁失败: {}", e))?;
+        conn.execute(
+            "UPDATE projects SET name = ?1, description = ?2, updated_at = CURRENT_TIMESTAMP WHERE id = ?3",
+            params![name, description, id],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_project(&self, id: i64) -> Result<()> {
+        let conn = self.conn.lock().map_err(|e| anyhow!("获取锁失败: {}", e))?;
+        // 将关联的 requests 的 project_id 设为 NULL
+        conn.execute("UPDATE requests SET project_id = NULL WHERE project_id = ?1", [id])?;
+        // 删除项目（CASCADE 会删除关联的 requirements）
+        conn.execute("DELETE FROM projects WHERE id = ?1", [id])?;
+        Ok(())
+    }
+
+    // ========== Requirement CRUD ==========
+
+    pub fn get_requirements(&self, project_id: i64) -> Result<Vec<Requirement>> {
+        let conn = self.conn.lock().map_err(|e| anyhow!("获取锁失败: {}", e))?;
+        let mut stmt = conn.prepare(
+            "SELECT id, project_id, name, description, sort_order, created_at, updated_at FROM requirements WHERE project_id = ?1 ORDER BY sort_order, id"
+        )?;
+        let rows = stmt.query_map([project_id], |row| {
+            Ok(Requirement {
+                id: row.get(0)?,
+                project_id: row.get(1)?,
+                name: row.get(2)?,
+                description: row.get(3)?,
+                sort_order: row.get(4)?,
+                created_at: row.get(5)?,
+                updated_at: row.get(6)?,
+            })
+        })?;
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(row?);
+        }
+        Ok(result)
+    }
+
+    pub fn create_requirement(&self, project_id: i64, name: &str, description: Option<&str>) -> Result<i64> {
+        let conn = self.conn.lock().map_err(|e| anyhow!("获取锁失败: {}", e))?;
+        conn.execute(
+            "INSERT INTO requirements (project_id, name, description) VALUES (?1, ?2, ?3)",
+            params![project_id, name, description],
+        )?;
+        Ok(conn.last_insert_rowid())
+    }
+
+    pub fn update_requirement(&self, id: i64, name: &str, description: Option<&str>) -> Result<()> {
+        let conn = self.conn.lock().map_err(|e| anyhow!("获取锁失败: {}", e))?;
+        conn.execute(
+            "UPDATE requirements SET name = ?1, description = ?2, updated_at = CURRENT_TIMESTAMP WHERE id = ?3",
+            params![name, description, id],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_requirement(&self, id: i64) -> Result<()> {
+        let conn = self.conn.lock().map_err(|e| anyhow!("获取锁失败: {}", e))?;
+        // 将关联的 requests 的 requirement_id 设为 NULL
+        conn.execute("UPDATE requests SET requirement_id = NULL WHERE requirement_id = ?1", [id])?;
+        conn.execute("DELETE FROM requirements WHERE id = ?1", [id])?;
+        Ok(())
+    }
+
+    // ========== Project Tree ==========
+
+    pub fn get_project_tree(&self) -> Result<Vec<ProjectTree>> {
+        let projects = self.get_projects()?;
+        let mut tree = Vec::new();
+
+        for project in projects {
+            let requirements = self.get_requirements(project.id)?;
+            let mut req_with_favs = Vec::new();
+
+            for requirement in requirements {
+                let favorites = self.get_favorites_filtered(Some(project.id), Some(requirement.id))?;
+                req_with_favs.push(RequirementWithFavorites {
+                    requirement,
+                    favorites,
+                });
+            }
+
+            tree.push(ProjectTree {
+                project,
+                requirements: req_with_favs,
+            });
+        }
+
+        Ok(tree)
+    }
+
+    // ========== Filtered Queries ==========
+
+    pub fn get_favorites_filtered(&self, project_id: Option<i64>, requirement_id: Option<i64>) -> Result<Vec<FavoriteRecord>> {
+        let conn = self.conn.lock().map_err(|e| anyhow!("获取锁失败: {}", e))?;
+
+        let base_sql = "SELECT f.id, f.request_id, f.name, f.description, f.created_at,
+                        r.method, r.url, r.headers, r.body, r.auth, r.proxy, r.ssl_verify, r.timeout, r.project_id, r.requirement_id
+                 FROM favorites f JOIN requests r ON f.request_id = r.id";
+
+        let where_clause = match (project_id, requirement_id) {
+            (Some(_), Some(_)) => " WHERE r.project_id = ?1 AND r.requirement_id = ?2",
+            (Some(_), None) => " WHERE r.project_id = ?1",
+            (None, Some(_)) => " WHERE r.requirement_id = ?1",
+            (None, None) => "",
+        };
+
+        let order_clause = " ORDER BY f.created_at DESC";
+        let sql = format!("{}{}{}", base_sql, where_clause, order_clause);
+
+        let mut stmt = conn.prepare(&sql)?;
+
+        let map_row = |row: &rusqlite::Row| -> rusqlite::Result<FavoriteRecord> {
+            let headers_str: Option<String> = row.get(7)?;
+            let body_str: Option<String> = row.get(8)?;
+            let auth_str: Option<String> = row.get(9)?;
+            let proxy_str: Option<String> = row.get(10)?;
+
+            Ok(FavoriteRecord {
+                id: row.get(0)?,
+                request: HttpRequest {
+                    id: Some(row.get(1)?),
+                    name: None,
+                    method: row.get(5)?,
+                    url: row.get(6)?,
+                    headers: headers_str.and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default(),
+                    body: body_str.and_then(|s| serde_json::from_str(&s).ok()),
+                    auth: auth_str.and_then(|s| serde_json::from_str(&s).ok()),
+                    proxy: proxy_str.and_then(|s| serde_json::from_str(&s).ok()),
+                    ssl_verify: row.get(11)?,
+                    timeout: row.get(12)?,
+                    project_id: row.get(13)?,
+                    requirement_id: row.get(14)?,
+                },
+                name: row.get(2)?,
+                description: row.get(3)?,
+                created_at: row.get(4)?,
+            })
+        };
+
+        let rows = match (project_id, requirement_id) {
+            (Some(pid), Some(rid)) => stmt.query_map(params![pid, rid], map_row)?,
+            (Some(pid), None) => stmt.query_map(params![pid], map_row)?,
+            (None, Some(rid)) => stmt.query_map(params![rid], map_row)?,
+            (None, None) => stmt.query_map([], map_row)?,
+        };
+
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(row?);
+        }
+        Ok(result)
+    }
+
+    pub fn move_request(&self, request_id: i64, project_id: Option<i64>, requirement_id: Option<i64>) -> Result<()> {
+        let conn = self.conn.lock().map_err(|e| anyhow!("获取锁失败: {}", e))?;
+        conn.execute(
+            "UPDATE requests SET project_id = ?1, requirement_id = ?2, updated_at = CURRENT_TIMESTAMP WHERE id = ?3",
+            params![project_id, requirement_id, request_id],
+        )?;
+        Ok(())
+    }
+
+    // ========== Config CRUD ==========
+
+    pub fn get_config(&self, key: &str) -> Result<Option<String>> {
+        let conn = self.conn.lock().map_err(|e| anyhow!("获取锁失败: {}", e))?;
+        let result: Option<String> = conn.query_row(
+            "SELECT value FROM config WHERE key = ?1",
+            params![key],
+            |row| row.get(0),
+        ).ok();
+        Ok(result)
+    }
+
+    pub fn set_config(&self, key: &str, value: &str) -> Result<()> {
+        let conn = self.conn.lock().map_err(|e| anyhow!("获取锁失败: {}", e))?;
+        conn.execute(
+            "INSERT OR REPLACE INTO config (key, value, updated_at) VALUES (?1, ?2, CURRENT_TIMESTAMP)",
+            params![key, value],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_config(&self, key: &str) -> Result<()> {
+        let conn = self.conn.lock().map_err(|e| anyhow!("获取锁失败: {}", e))?;
+        conn.execute(
+            "DELETE FROM config WHERE key = ?1",
+            params![key],
+        )?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -520,6 +861,8 @@ mod tests {
             proxy: None,
             ssl_verify: true,
             timeout: Some(30),
+            project_id: None,
+            requirement_id: None,
         };
 
         let id = storage.save_request(&request).unwrap();
@@ -542,6 +885,8 @@ mod tests {
             proxy: None,
             ssl_verify: true,
             timeout: None,
+            project_id: None,
+            requirement_id: None,
         };
         let request_id = storage.save_request(&request).unwrap();
 
