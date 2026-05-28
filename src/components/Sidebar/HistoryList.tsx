@@ -68,7 +68,7 @@ export const HistoryList: React.FC = () => {
     const name = prompt('请输入收藏名称:', record.request.url);
     if (!name) return;
     try {
-      await addFavorite(record.request.id, name);
+      await addFavorite(record.request.id, name, undefined, record.response);
     } catch (error) {
       console.error('收藏失败:', error);
     }

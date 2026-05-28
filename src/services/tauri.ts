@@ -33,9 +33,10 @@ export async function clearHistory(): Promise<void> {
 export async function addFavorite(
   requestId: number,
   name: string,
-  description?: string
+  description?: string,
+  response?: HttpResponse
 ): Promise<number> {
-  return await invoke('add_favorite', { requestId, name, description });
+  return await invoke('add_favorite', { requestId, name, description, response });
 }
 
 export async function upsertFavorite(
